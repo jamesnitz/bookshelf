@@ -92,17 +92,46 @@ namespace bookshelf.Controllers
         // GET: Books/Edit/5
         public async Task<ActionResult> Edit(int id)
         {
-            return View();
+            var book = await _context.Book.Include(b => b.BookGenres).FirstOrDefaultAsync(b => b.Id == id);
+
+            var viewModel = new BookFormViewModel();
+
+            var genreOptions = await _context
+                .Genre.Select(g => new SelectListItem()
+                {
+                    Text = g.Name,
+                    Value = g.Id.ToString()
+                }).ToListAsync();
+
+            viewModel.Id = id;
+            viewModel.Title = book.Title;
+            viewModel.Author = book.Author;
+            viewModel.GenreOptions = genreOptions;
+            viewModel.SelectedGenreIds = book.BookGenres.Select(bg => bg.GenreId).ToList();
+
+            return View(viewModel);
         }
 
         // POST: Books/Edit/5
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Edit(int id, IFormCollection collection)
+        public async Task<ActionResult> Edit(int id, BookFormViewModel bookViewModel)
         {
             try
             {
-                // TODO: Add update logic here
+                var bookDataModel = await _context.Book.Include(b => b.BookGenres).FirstOrDefaultAsync(b => b.Id == id);
+
+                bookDataModel.Title = bookViewModel.Title;
+                bookDataModel.Author = bookViewModel.Author;
+                bookDataModel.BookGenres.Clear();
+                bookDataModel.BookGenres = bookViewModel.SelectedGenreIds.Select(genreId => new BookGenre()
+                {
+                    Book = bookDataModel,
+                    GenreId = genreId
+                }).ToList();
+
+                _context.Book.Update(bookDataModel);
+                await _context.SaveChangesAsync();
 
                 return RedirectToAction(nameof(Index));
             }
@@ -115,24 +144,37 @@ namespace bookshelf.Controllers
         // GET: Books/Delete/5
         public async Task<ActionResult> Delete(int id)
         {
-            return View();
+
+            var book = await _context.Book.Include(b => b.BookGenres).FirstOrDefaultAsync(item => item.Id == id);
+
+            var loggedInUser = await GetCurrentUserAsync();
+
+            if (book.ApplicationuserId != loggedInUser.Id)
+            {
+                return NotFound();
+            }
+
+            return View(book);
         }
 
         // POST: Books/Delete/5
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Delete(int id, IFormCollection collection)
+        public async Task<ActionResult> Delete(int id, Book book)
         {
-            try
-            {
-                // TODO: Add delete logic here
+                try
+                {
+                    _context.Book.Remove(book);
+                    await _context.SaveChangesAsync();
 
-                return RedirectToAction(nameof(Index));
-            }
-            catch
-            {
-                return View();
-            }
+                    return RedirectToAction(nameof(Index));
+                }
+                catch
+                {
+                    return View();
+                }
+
+            
         }
         private async Task<ApplicationUser> GetCurrentUserAsync() => await _userManager.GetUserAsync(HttpContext.User);
     }
